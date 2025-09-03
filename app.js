@@ -74,6 +74,37 @@ const MAR_CLOSE_THR = 0.4;
 const BROW_RAISE_DELTA = 0.015;
 
 /* ========================== 
+   API de registro de gestos 
+========================== */
+const API_URL = 'https://68b89987b71540504328ab08.mockapi.io/api/v1/gestos';
+
+/**
+ * Registra un gesto en la API MockAPI
+ * @param {"parpadeo"|"boca"|"cejas"} tipo
+ */
+async function logGesture(tipo){
+  const payload = {
+    cejas:     tipo === 'cejas'     ? 1 : 0,
+    boca:      tipo === 'boca'      ? 1 : 0,
+    parpadeo:  tipo === 'parpadeo'  ? 1 : 0,
+    fechas_hora: new Date().toISOString()
+  };
+
+  try{
+    const res = await fetch(API_URL, {
+      method: 'POST',
+      headers: { 'Content-Type':'application/json' },
+      body: JSON.stringify(payload)
+    });
+    if(!res.ok){
+      console.warn('No se pudo registrar el gesto:', res.status, await res.text());
+    }
+  }catch(err){
+    console.warn('Error de red al registrar el gesto:', err);
+  }
+}
+
+/* ========================== 
    Geometría 
 ========================== */
 function dist(a, b){
@@ -190,7 +221,11 @@ function updateCounters(ear, mar, browDist, landmarks){
     eyeClosed=true; eyeStateEl.textContent="Cerrados";
   }
   if(eyeClosed && earSmoothed>EAR_OPEN_THR){
-    eyeClosed=false; blinkCount++; blinkCountEl.textContent=blinkCount; eyeStateEl.textContent="Abiertos";
+    eyeClosed=false; 
+    blinkCount++; 
+    blinkCountEl.textContent=blinkCount; 
+    eyeStateEl.textContent="Abiertos";
+    logGesture('parpadeo'); // <-- enviar a API
   }
 
   // Boca
@@ -198,15 +233,15 @@ function updateCounters(ear, mar, browDist, landmarks){
     mouthOpen=true; mouthStateEl.textContent="Abierta";
   }
   if(mouthOpen && marSmoothed<MAR_CLOSE_THR){
-    mouthOpen=false; mouthCount++; mouthCountEl.textContent=mouthCount; mouthStateEl.textContent="Cerrada";
+    mouthOpen=false; 
+    mouthCount++; 
+    mouthCountEl.textContent=mouthCount; 
+    mouthStateEl.textContent="Cerrada";
+    logGesture('boca'); // <-- enviar a API
   }
 
   // Cejas
   const delta = browSmoothed - browBaseline;
-
-  console.log("BrowDist:", browSmoothed.toFixed(3), 
-              "Baseline:", browBaseline.toFixed(3), 
-              "Delta:", delta.toFixed(3));
 
   if(!browRaised && delta > BROW_RAISE_DELTA){
       browRaised = true;
@@ -217,6 +252,7 @@ function updateCounters(ear, mar, browDist, landmarks){
       browRaiseCount++;
       browCountEl.textContent = browRaiseCount;
       browStateEl.textContent = "Neutras";
+      logGesture('cejas'); // <-- enviar a API
   }
 }
 
