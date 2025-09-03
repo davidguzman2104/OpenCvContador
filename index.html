@@ -1,0 +1,90 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Detección facial con OpenCV.js + FaceMesh</title>
+  <link rel="stylesheet" href="styles.css" />
+  <!-- OpenCV.js (WASM) -->
+  <script async src="https://docs.opencv.org/4.x/opencv.js"></script>
+  <!-- MediaPipe FaceMesh -->
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/face_mesh.js"></script>
+</head>
+<body>
+  <header class="app-header">
+    <h1>Rastreador Facial: Ojos, Cejas y Boca</h1>
+    <p class="subtitle">OpenCV.js + MediaPipe FaceMesh (todo en el navegador)</p>
+  </header>
+
+  <main class="app-main">
+    <!-- Panel Izquierdo: Cámara / Canvas -->
+    <section class="panel panel-left">
+      <div class="video-wrapper">
+        <video id="video" playsinline></video>
+        <canvas id="canvas"></canvas>
+        <div class="status-badge" id="statusBadge">Inicializando...</div>
+      </div>
+      <div class="controls">
+        <button id="btnStart" class="btn primary">Iniciar cámara</button>
+        <button id="btnStop" class="btn">Detener</button>
+        <button id="btnReset" class="btn danger outline">Reiniciar conteos</button>
+      </div>
+      <div class="tips">
+        <ul>
+          <li>Mira al frente en los primeros 5–8 s para calibrar cejas.</li>
+          <li>Parpadea y abre/cierra la boca naturalmente para probar.</li>
+          <li>Si cambias iluminación, pulsa <strong>Reiniciar conteos</strong> para recalibrar.</li>
+        </ul>
+      </div>
+    </section>
+
+    <!-- Panel Derecho: Contadores -->
+    <aside class="panel panel-right">
+      <div class="cards">
+        <div class="card">
+          <div class="card-title">Parpadeos</div>
+          <div class="counter" id="blinkCount">0</div>
+          <div class="mini">Estado: <span id="eyeState">—</span></div>
+        </div>
+        <div class="card">
+          <div class="card-title">Movimientos de Boca</div>
+          <div class="counter" id="mouthCount">0</div>
+          <div class="mini">Estado: <span id="mouthState">—</span></div>
+        </div>
+        <div class="card">
+          <div class="card-title">Levantamientos de Cejas</div>
+          <div class="counter" id="browCount">0</div>
+          <div class="mini">Estado: <span id="browState">—</span></div>
+        </div>
+      </div>
+
+      <div class="readouts">
+        <div class="readout">
+          <div class="label">EAR (ojo)</div>
+          <div class="value" id="earValue">—</div>
+        </div>
+        <div class="readout">
+          <div class="label">MAR (boca)</div>
+          <div class="value" id="marValue">—</div>
+        </div>
+        <div class="readout">
+          <div class="label">Dist. Cejas-Ojos</div>
+          <div class="value" id="browValue">—</div>
+        </div>
+      </div>
+
+      <div class="footer-note">
+        <span>⚠️</span> Esta demo usa landmarks de FaceMesh para medir distancias y OpenCV.js para el render.
+      </div>
+    </aside>
+  </main>
+
+  <footer class="app-footer">
+    <small>Hecho con ❤️ para pruebas educativas. Funciona mejor con buena iluminación.</small>
+  </footer>
+
+  <script src="app.js"></script>
+</body>
+</html>
