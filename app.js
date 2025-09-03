@@ -32,9 +32,9 @@ let camera = null;
 let running = false;
 let faceMesh = null;
 
-let blinkCount = 0;
-let mouthCount = 0;
-let browRaiseCount = 0;
+let blinkCount = 0;      // parpadeo
+let mouthCount = 0;      // boca
+let browRaiseCount = 0;  // cejas
 
 let eyeClosed = false;
 let mouthOpen = false;
@@ -74,33 +74,46 @@ const MAR_CLOSE_THR = 0.4;
 const BROW_RAISE_DELTA = 0.015;
 
 /* ========================== 
-   API de registro de gestos 
+   API de totales (MockAPI)
+   - 1 registro por sesión
+   - POST al primer gesto
+   - PATCH en gestos siguientes
 ========================== */
 const API_URL = 'https://68b89987b71540504328ab08.mockapi.io/api/v1/gestos';
 
-/**
- * Registra un gesto en la API MockAPI
- * @param {"parpadeo"|"boca"|"cejas"} tipo
- */
-async function logGesture(tipo){
+let currentRecordId = null;   // id del registro activo en BD
+let saveTimer = null;         // debounce
+
+function scheduleSaveTotals(){
+  clearTimeout(saveTimer);
+  saveTimer = setTimeout(saveTotals, 400); // evita múltiples llamadas seguidas
+}
+
+async function saveTotals(){
   const payload = {
-    cejas:     tipo === 'cejas'     ? 1 : 0,
-    boca:      tipo === 'boca'      ? 1 : 0,
-    parpadeo:  tipo === 'parpadeo'  ? 1 : 0,
-    fechas_hora: new Date().toISOString()
+    cejas: browRaiseCount,
+    boca: mouthCount,
+    parpadeo: blinkCount,
+    fechas_hora: new Date().toISOString(),
   };
 
   try{
+    // siempre crear un nuevo registro
     const res = await fetch(API_URL, {
       method: 'POST',
       headers: { 'Content-Type':'application/json' },
       body: JSON.stringify(payload)
     });
     if(!res.ok){
-      console.warn('No se pudo registrar el gesto:', res.status, await res.text());
+      console.warn('❌ POST falló:', res.status, await res.text());
+      return;
     }
+    const data = await res.json();
+    console.log('✅ POST creado:', data);
+    statusBadge.textContent = `Guardado (#${data.id})`;
   }catch(err){
-    console.warn('Error de red al registrar el gesto:', err);
+    console.warn('🚨 Error de red al guardar:', err);
+    statusBadge.textContent = 'Error al guardar';
   }
 }
 
@@ -132,13 +145,18 @@ function mouthMAR(landmarks){
 }
 
 function browDistance(landmarks){
-  const leftBrowY = avgY(landmarks, L_BROW_POINTS);
+  const leftBrowY  = avgY(landmarks, L_BROW_POINTS);
   const rightBrowY = avgY(landmarks, R_BROW_POINTS);
-  const leftEyeY = avgY(landmarks, L_EYE_TOP_POINTS);
-  const rightEyeY = avgY(landmarks, R_EYE_TOP_POINTS);
+  const leftEyeY   = avgY(landmarks, L_EYE_TOP_POINTS);
+  const rightEyeY  = avgY(landmarks, R_EYE_TOP_POINTS);
 
   const lEyeHoriz = dist(landmarks[L_EYE.left], landmarks[L_EYE.right]);
-  const rEyeHoriz = dist(landmarks[R_EYE.left], landmarks[R_EYE.right]);
+  const rEyeHoriz = dist(landmarks[R_EYE.left], landmarks[R_EYE.right]); // ✅ fix del typo
+
+  // Guardas defensivas ante valores raros (0/NaN)
+  if(!isFinite(lEyeHoriz) || lEyeHoriz === 0 || !isFinite(rEyeHoriz) || rEyeHoriz === 0){
+    return 0;
+  }
 
   const lDist = (leftBrowY - leftEyeY) / lEyeHoriz;
   const rDist = (rightBrowY - rightEyeY) / rEyeHoriz;
@@ -192,9 +210,9 @@ function drawOverlay(frame, landmarks){
 }
 
 /* ========================== 
-   Contadores 
+   Contadores y guardado 
 ========================== */
-function updateCounters(ear, mar, browDist, landmarks){
+function updateCounters(ear, mar, browDist){
   // Suavizado
   earSmoothed  = earSmoothed ? smooth(earSmoothed, ear) : ear;
   marSmoothed  = marSmoothed ? smooth(marSmoothed, mar) : mar;
@@ -216,7 +234,9 @@ function updateCounters(ear, mar, browDist, landmarks){
     }
   }
 
-  // Ojos
+  let changed = false; // para saber si hay que guardar
+
+  // Ojos (parpadeo)
   if(!eyeClosed && earSmoothed<EAR_CLOSE_THR){
     eyeClosed=true; eyeStateEl.textContent="Cerrados";
   }
@@ -225,7 +245,7 @@ function updateCounters(ear, mar, browDist, landmarks){
     blinkCount++; 
     blinkCountEl.textContent=blinkCount; 
     eyeStateEl.textContent="Abiertos";
-    logGesture('parpadeo'); // <-- enviar a API
+    changed = true;
   }
 
   // Boca
@@ -237,12 +257,11 @@ function updateCounters(ear, mar, browDist, landmarks){
     mouthCount++; 
     mouthCountEl.textContent=mouthCount; 
     mouthStateEl.textContent="Cerrada";
-    logGesture('boca'); // <-- enviar a API
+    changed = true;
   }
 
   // Cejas
   const delta = browSmoothed - browBaseline;
-
   if(!browRaised && delta > BROW_RAISE_DELTA){
       browRaised = true;
       browStateEl.textContent = "Levantadas";
@@ -252,7 +271,12 @@ function updateCounters(ear, mar, browDist, landmarks){
       browRaiseCount++;
       browCountEl.textContent = browRaiseCount;
       browStateEl.textContent = "Neutras";
-      logGesture('cejas'); // <-- enviar a API
+      changed = true;
+  }
+
+  // Si hubo cambios en los totales, guardamos (debounced)
+  if(changed){
+    scheduleSaveTotals();
   }
 }
 
@@ -314,7 +338,7 @@ function onResults(results){
   const mar = mouthMAR(landmarks);
   const brow = browDistance(landmarks);
 
-  updateCounters(ear, mar, brow, landmarks);
+  updateCounters(ear, mar, brow);
 }
 
 /* ========================== 
@@ -323,6 +347,7 @@ function onResults(results){
 btnStart.addEventListener('click', startCamera);
 btnStop.addEventListener('click', stopCamera);
 btnReset.addEventListener('click', ()=>{
+  // Reiniciar contadores y estado visual
   blinkCount=mouthCount=browRaiseCount=0;
   blinkCountEl.textContent='0';
   mouthCountEl.textContent='0';
@@ -331,6 +356,11 @@ btnReset.addEventListener('click', ()=>{
   earSmoothed=marSmoothed=browSmoothed=0;
   baselineComputed=false; browBaseline=0; baselineFrames=0;
   statusBadge.textContent="Calibrando (0%)";
+
+  // Iniciar nueva sesión de guardado
+  currentRecordId = null;
+  clearTimeout(saveTimer);
 });
 
 window.addEventListener('load', ()=>{ statusBadge.textContent="Listo para iniciar"; });
+
