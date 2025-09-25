@@ -36,10 +36,6 @@ let blinkCount = 0;      // parpadeo
 let mouthCount = 0;      // boca
 let browRaiseCount = 0;  // cejas
 
-let eyeClosed = false;
-let mouthOpen = false;
-let browRaised = false;
-
 let baselineComputed = false;
 let browBaseline = 0;
 let baselineFrames = 0;
@@ -48,6 +44,13 @@ const BASELINE_TARGET_FRAMES = 30;
 // Suavizado simple
 const smooth = (prev, current, alpha=0.2) => prev + alpha * (current - prev);
 let earSmoothed = 0, marSmoothed = 0, browSmoothed = 0;
+
+/* ========================== 
+   Últimos estados registrados (para no repetir)
+========================== */
+let prevEyeState = null;
+let prevMouthState = null;
+let prevBrowState = null;
 
 /* ========================== 
    Índices FaceMesh 
@@ -74,47 +77,48 @@ const MAR_CLOSE_THR = 0.4;
 const BROW_RAISE_DELTA = 0.015;
 
 /* ========================== 
-   API de totales (MockAPI)
-   - 1 registro por sesión
-   - POST al primer gesto
-   - PATCH en gestos siguientes
+   API Flask local
 ========================== */
-const API_URL = 'https://68b89987b71540504328ab08.mockapi.io/api/v1/gestos';
+const API_URLS = {
+  parpadeo: "http://127.0.0.1:5000/parpadeo",
+  ceja: "http://127.0.0.1:5000/ceja",
+  boca: "http://127.0.0.1:5000/boca"
+};
 
-let currentRecordId = null;   // id del registro activo en BD
-let saveTimer = null;         // debounce
-
-function scheduleSaveTotals(){
-  clearTimeout(saveTimer);
-  saveTimer = setTimeout(saveTotals, 400); // evita múltiples llamadas seguidas
+/* ========================== 
+   Guardado en API Flask (dinámico)
+========================== */
+async function saveParpadeo(estado){
+  try{
+    await fetch(API_URLS.parpadeo,{
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({ estado })
+    });
+    console.log("✅ Parpadeo guardado:", estado);
+  }catch(err){ console.error("❌ Error al guardar parpadeo:",err); }
 }
 
-async function saveTotals(){
-  const payload = {
-    cejas: browRaiseCount,
-    boca: mouthCount,
-    parpadeo: blinkCount,
-    fechas_hora: new Date().toISOString(),
-  };
-
+async function saveBoca(estado){
   try{
-    // siempre crear un nuevo registro
-    const res = await fetch(API_URL, {
-      method: 'POST',
-      headers: { 'Content-Type':'application/json' },
-      body: JSON.stringify(payload)
+    await fetch(API_URLS.boca,{
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({ estado })
     });
-    if(!res.ok){
-      console.warn('❌ POST falló:', res.status, await res.text());
-      return;
-    }
-    const data = await res.json();
-    console.log('✅ POST creado:', data);
-    statusBadge.textContent = `Guardado (#${data.id})`;
-  }catch(err){
-    console.warn('🚨 Error de red al guardar:', err);
-    statusBadge.textContent = 'Error al guardar';
-  }
+    console.log("✅ Boca guardada:", estado);
+  }catch(err){ console.error("❌ Error al guardar boca:",err); }
+}
+
+async function saveCeja(estado){
+  try{
+    await fetch(API_URLS.ceja,{
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({ estado })
+    });
+    console.log("✅ Ceja guardada:", estado);
+  }catch(err){ console.error("❌ Error al guardar ceja:",err); }
 }
 
 /* ========================== 
@@ -151,15 +155,15 @@ function browDistance(landmarks){
   const rightEyeY  = avgY(landmarks, R_EYE_TOP_POINTS);
 
   const lEyeHoriz = dist(landmarks[L_EYE.left], landmarks[L_EYE.right]);
-  const rEyeHoriz = dist(landmarks[R_EYE.left], landmarks[R_EYE.right]); // ✅ fix del typo
+  const rEyeHoriz = dist(landmarks[R_EYE.left], landmarks[R_EYE.right]);
 
-  // Guardas defensivas ante valores raros (0/NaN)
   if(!isFinite(lEyeHoriz) || lEyeHoriz === 0 || !isFinite(rEyeHoriz) || rEyeHoriz === 0){
     return 0;
   }
 
-  const lDist = (leftBrowY - leftEyeY) / lEyeHoriz;
-  const rDist = (rightBrowY - rightEyeY) / rEyeHoriz;
+  // Ojo - Cejas → más grande cuando levantas cejas
+  const lDist = (leftEyeY - leftBrowY) / lEyeHoriz;
+  const rDist = (rightEyeY - rightBrowY) / rEyeHoriz;
 
   return (lDist + rDist) / 2;
 }
@@ -195,7 +199,7 @@ function drawOverlay(frame, landmarks){
     ctx.fill();
   });
 
-  // Cejas (línea simple de referencia)
+  // Cejas
   [L_BROW_POINTS, R_BROW_POINTS].forEach(points=>{
     ctx.beginPath();
     points.forEach((idx,i)=>{
@@ -213,17 +217,14 @@ function drawOverlay(frame, landmarks){
    Contadores y guardado 
 ========================== */
 function updateCounters(ear, mar, browDist){
-  // Suavizado
   earSmoothed  = earSmoothed ? smooth(earSmoothed, ear) : ear;
   marSmoothed  = marSmoothed ? smooth(marSmoothed, mar) : mar;
   browSmoothed = browSmoothed ? smooth(browSmoothed, browDist) : browDist;
 
-  // Mostrar valores
   earValueEl.textContent = earSmoothed.toFixed(3);
   marValueEl.textContent = marSmoothed.toFixed(3);
   browValueEl.textContent = (baselineComputed ? (browSmoothed - browBaseline) : browSmoothed).toFixed(3);
 
-  // Calibración
   if(!baselineComputed){
     browBaseline = (browBaseline*baselineFrames + browSmoothed)/(baselineFrames+1);
     baselineFrames++;
@@ -234,50 +235,50 @@ function updateCounters(ear, mar, browDist){
     }
   }
 
-  let changed = false; // para saber si hay que guardar
-
-  // Ojos (parpadeo)
-  if(!eyeClosed && earSmoothed<EAR_CLOSE_THR){
-    eyeClosed=true; eyeStateEl.textContent="Cerrados";
-  }
-  if(eyeClosed && earSmoothed>EAR_OPEN_THR){
-    eyeClosed=false; 
-    blinkCount++; 
-    blinkCountEl.textContent=blinkCount; 
-    eyeStateEl.textContent="Abiertos";
-    changed = true;
-  }
-
-  // Boca
-  if(!mouthOpen && marSmoothed>MAR_OPEN_THR){
-    mouthOpen=true; mouthStateEl.textContent="Abierta";
-  }
-  if(mouthOpen && marSmoothed<MAR_CLOSE_THR){
-    mouthOpen=false; 
-    mouthCount++; 
-    mouthCountEl.textContent=mouthCount; 
-    mouthStateEl.textContent="Cerrada";
-    changed = true;
-  }
-
-  // Cejas
+  // ================== ESTADOS ==================
+  let estadoOjo   = (earSmoothed < EAR_CLOSE_THR) ? "cerrado" : "abierto";
+  let estadoBoca  = (marSmoothed > MAR_OPEN_THR) ? "abierta" : "cerrada";
   const delta = browSmoothed - browBaseline;
-  if(!browRaised && delta > BROW_RAISE_DELTA){
-      browRaised = true;
-      browStateEl.textContent = "Levantadas";
+  let estadoCeja = (delta > BROW_RAISE_DELTA) ? "levantada" : "neutra";
+
+  // ================== GUARDAR SOLO SI CAMBIA ==================
+  if (estadoOjo !== prevEyeState){
+    saveParpadeo(estadoOjo);
+    prevEyeState = estadoOjo;
+
+    // 👇 Solo contar cuando se cierran los ojos
+    if(estadoOjo === "cerrado"){
+      blinkCount++;
+      blinkCountEl.textContent = blinkCount;
+    }
   }
-  if(browRaised && delta < BROW_RAISE_DELTA * 0.5){
-      browRaised = false;
+
+  if (estadoBoca !== prevMouthState){
+    saveBoca(estadoBoca);
+    prevMouthState = estadoBoca;
+
+    // 👇 Solo contar cuando se abre la boca
+    if(estadoBoca === "abierta"){
+      mouthCount++;
+      mouthCountEl.textContent = mouthCount;
+    }
+  }
+
+  if (estadoCeja !== prevBrowState){
+    saveCeja(estadoCeja);
+    prevBrowState = estadoCeja;
+
+    // 👇 Solo contar cuando se levantan las cejas
+    if(estadoCeja === "levantada"){
       browRaiseCount++;
       browCountEl.textContent = browRaiseCount;
-      browStateEl.textContent = "Neutras";
-      changed = true;
+    }
   }
 
-  // Si hubo cambios en los totales, guardamos (debounced)
-  if(changed){
-    scheduleSaveTotals();
-  }
+  // ================== UI ==================
+  eyeStateEl.textContent   = estadoOjo.charAt(0).toUpperCase() + estadoOjo.slice(1);
+  mouthStateEl.textContent = estadoBoca.charAt(0).toUpperCase() + estadoBoca.slice(1);
+  browStateEl.textContent  = estadoCeja.charAt(0).toUpperCase() + estadoCeja.slice(1);
 }
 
 /* ========================== 
@@ -347,20 +348,14 @@ function onResults(results){
 btnStart.addEventListener('click', startCamera);
 btnStop.addEventListener('click', stopCamera);
 btnReset.addEventListener('click', ()=>{
-  // Reiniciar contadores y estado visual
   blinkCount=mouthCount=browRaiseCount=0;
   blinkCountEl.textContent='0';
   mouthCountEl.textContent='0';
   browCountEl.textContent='0';
-  eyeClosed=mouthOpen=browRaised=false;
   earSmoothed=marSmoothed=browSmoothed=0;
   baselineComputed=false; browBaseline=0; baselineFrames=0;
+  prevEyeState = prevMouthState = prevBrowState = null;
   statusBadge.textContent="Calibrando (0%)";
-
-  // Iniciar nueva sesión de guardado
-  currentRecordId = null;
-  clearTimeout(saveTimer);
 });
 
 window.addEventListener('load', ()=>{ statusBadge.textContent="Listo para iniciar"; });
-
