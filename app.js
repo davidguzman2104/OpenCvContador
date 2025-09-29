@@ -41,13 +41,9 @@ let browBaseline = 0;
 let baselineFrames = 0;
 const BASELINE_TARGET_FRAMES = 30;
 
-// Suavizado simple
 const smooth = (prev, current, alpha=0.2) => prev + alpha * (current - prev);
 let earSmoothed = 0, marSmoothed = 0, browSmoothed = 0;
 
-/* ========================== 
-   Últimos estados registrados
-========================== */
 let prevEyeState = null;
 let prevMouthState = null;
 let prevBrowState = null;
@@ -126,19 +122,14 @@ async function saveCeja(estado){
 /* ========================== 
    Geometría 
 ========================== */
-function dist(a, b){
-  const dx = a.x - b.x, dy = a.y - b.y;
-  return Math.hypot(dx, dy);
-}
-function avgY(landmarks, points){
-  return points.map(i=>landmarks[i].y).reduce((a,b)=>a+b,0) / points.length;
-}
+function dist(a, b){ const dx=a.x-b.x, dy=a.y-b.y; return Math.hypot(dx,dy); }
+function avgY(landmarks, points){ return points.map(i=>landmarks[i].y).reduce((a,b)=>a+b,0)/points.length; }
 function eyeEAR(landmarks, L, R){
   const earForEye = (eye) => {
     const horiz = dist(landmarks[eye.left], landmarks[eye.right]);
     const vert  = dist(landmarks[eye.top], landmarks[eye.bottom]);
     return vert / horiz;
-  }
+  };
   return (earForEye(L) + earForEye(R)) / 2;
 }
 function mouthMAR(landmarks){
@@ -151,13 +142,9 @@ function browDistance(landmarks){
   const rightBrowY = avgY(landmarks, R_BROW_POINTS);
   const leftEyeY   = avgY(landmarks, L_EYE_TOP_POINTS);
   const rightEyeY  = avgY(landmarks, R_EYE_TOP_POINTS);
-
   const lEyeHoriz = dist(landmarks[L_EYE.left], landmarks[L_EYE.right]);
   const rEyeHoriz = dist(landmarks[R_EYE.left], landmarks[R_EYE.right]);
-
-  if(!isFinite(lEyeHoriz) || lEyeHoriz === 0 || !isFinite(rEyeHoriz) || rEyeHoriz === 0){
-    return 0;
-  }
+  if(!isFinite(lEyeHoriz)||lEyeHoriz===0||!isFinite(rEyeHoriz)||rEyeHoriz===0){ return 0; }
   const lDist = (leftEyeY - leftBrowY) / lEyeHoriz;
   const rDist = (rightEyeY - rightBrowY) / rEyeHoriz;
   return (lDist + rDist) / 2;
@@ -169,7 +156,6 @@ function browDistance(landmarks){
 function drawOverlay(frame, landmarks){
   ctx.drawImage(frame, 0, 0, canvas.width, canvas.height);
   if(!landmarks) return;
-
   ctx.lineWidth = 2;
   [[L_EYE.left,L_EYE.right,L_EYE.top,L_EYE.bottom],
    [R_EYE.left,R_EYE.right,R_EYE.top,R_EYE.bottom]].forEach(([a,b,c,d])=>{
@@ -218,10 +204,7 @@ function updateCounters(ear, mar, browDist){
     browBaseline = (browBaseline*baselineFrames + browSmoothed)/(baselineFrames+1);
     baselineFrames++;
     statusBadge.textContent = `Calibrando (${Math.round(100*baselineFrames/BASELINE_TARGET_FRAMES)}%)`;
-    if(baselineFrames>=BASELINE_TARGET_FRAMES){
-      baselineComputed=true;
-      statusBadge.textContent="Listo";
-    }
+    if(baselineFrames>=BASELINE_TARGET_FRAMES){ baselineComputed=true; statusBadge.textContent="Listo"; }
   }
 
   let estadoOjo   = (earSmoothed < EAR_CLOSE_THR) ? "cerrado" : "abierto";
@@ -229,39 +212,20 @@ function updateCounters(ear, mar, browDist){
   const delta = browSmoothed - browBaseline;
   let estadoCeja = (delta > BROW_RAISE_DELTA) ? "levantada" : "neutra";
 
-  if (estadoOjo !== prevEyeState){
-    saveParpadeo(estadoOjo);
-    prevEyeState = estadoOjo;
-    if(estadoOjo === "cerrado"){ blinkCount++; blinkCountEl.textContent = blinkCount; }
-  }
-  if (estadoBoca !== prevMouthState){
-    saveBoca(estadoBoca);
-    prevMouthState = estadoBoca;
-    if(estadoBoca === "abierta"){ mouthCount++; mouthCountEl.textContent = mouthCount; }
-  }
-  if (estadoCeja !== prevBrowState){
-    saveCeja(estadoCeja);
-    prevBrowState = estadoCeja;
-    if(estadoCeja === "levantada"){ browRaiseCount++; browCountEl.textContent = browRaiseCount; }
-  }
+  if (estadoOjo !== prevEyeState){ saveParpadeo(estadoOjo); prevEyeState=estadoOjo; if(estadoOjo==="cerrado"){ blinkCount++; blinkCountEl.textContent=blinkCount; } }
+  if (estadoBoca !== prevMouthState){ saveBoca(estadoBoca); prevMouthState=estadoBoca; if(estadoBoca==="abierta"){ mouthCount++; mouthCountEl.textContent=mouthCount; } }
+  if (estadoCeja !== prevBrowState){ saveCeja(estadoCeja); prevBrowState=estadoCeja; if(estadoCeja==="levantada"){ browRaiseCount++; browCountEl.textContent=browRaiseCount; } }
 
-  eyeStateEl.textContent   = estadoOjo.charAt(0).toUpperCase() + estadoOjo.slice(1);
-  mouthStateEl.textContent = estadoBoca.charAt(0).toUpperCase() + estadoBoca.slice(1);
-  browStateEl.textContent  = estadoCeja.charAt(0).toUpperCase() + estadoCeja.slice(1);
+  eyeStateEl.textContent   = estadoOjo.charAt(0).toUpperCase()+estadoOjo.slice(1);
+  mouthStateEl.textContent = estadoBoca.charAt(0).toUpperCase()+estadoBoca.slice(1);
+  browStateEl.textContent  = estadoCeja.charAt(0).toUpperCase()+estadoCeja.slice(1);
 }
 
 /* ========================== 
    MediaPipe FaceMesh 
 ========================== */
-faceMesh = new FaceMesh({
-  locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/${file}`
-});
-faceMesh.setOptions({
-  maxNumFaces: 1,
-  refineLandmarks: true,
-  minDetectionConfidence: 0.6,
-  minTrackingConfidence: 0.6
-});
+faceMesh = new FaceMesh({ locateFile:(file)=>`https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/${file}` });
+faceMesh.setOptions({ maxNumFaces:1, refineLandmarks:true, minDetectionConfidence:0.6, minTrackingConfidence:0.6 });
 faceMesh.onResults(onResults);
 
 /* ========================== 
@@ -272,18 +236,11 @@ function startCamera(){
   running=true;
   canvas.width=canvas.clientWidth;
   canvas.height=canvas.clientHeight;
-  camera = new Camera(video,{
-    onFrame: async ()=>{ await faceMesh.send({image:video}); },
-    width:1280, height:800
-  });
+  camera=new Camera(video,{ onFrame:async()=>{ await faceMesh.send({image:video}); }, width:1280, height:800 });
   camera.start();
   statusBadge.textContent="Solicitando cámara…";
 }
-function stopCamera(){
-  if(camera){ camera.stop(); camera=null; }
-  running=false;
-  statusBadge.textContent="Detenida";
-}
+function stopCamera(){ if(camera){ camera.stop(); camera=null; } running=false; statusBadge.textContent="Detenida"; }
 
 /* ========================== 
    Loop resultados 
@@ -292,13 +249,7 @@ function onResults(results){
   const frame = results.image;
   const landmarks = results.multiFaceLandmarks && results.multiFaceLandmarks[0];
   drawOverlay(frame, landmarks);
-
-  if(!landmarks){
-    eyeStateEl.textContent="Sin rostro";
-    mouthStateEl.textContent="Sin rostro";
-    browStateEl.textContent = baselineComputed ? "Neutras":"Calibrando…";
-    return;
-  }
+  if(!landmarks){ eyeStateEl.textContent="Sin rostro"; mouthStateEl.textContent="Sin rostro"; browStateEl.textContent=baselineComputed?"Neutras":"Calibrando…"; return; }
   const ear = eyeEAR(landmarks, L_EYE, R_EYE);
   const mar = mouthMAR(landmarks);
   const brow = browDistance(landmarks);
@@ -312,78 +263,63 @@ btnStart.addEventListener('click', startCamera);
 btnStop.addEventListener('click', stopCamera);
 btnReset.addEventListener('click', ()=>{
   blinkCount=mouthCount=browRaiseCount=0;
-  blinkCountEl.textContent='0';
-  mouthCountEl.textContent='0';
-  browCountEl.textContent='0';
+  blinkCountEl.textContent='0'; mouthCountEl.textContent='0'; browCountEl.textContent='0';
   earSmoothed=marSmoothed=browSmoothed=0;
   baselineComputed=false; browBaseline=0; baselineFrames=0;
-  prevEyeState = prevMouthState = prevBrowState = null;
+  prevEyeState=prevMouthState=prevBrowState=null;
   statusBadge.textContent="Calibrando (0%)";
 });
 window.addEventListener('load', ()=>{ statusBadge.textContent="Listo para iniciar"; });
 
 /* ========================== 
-   📌 Tabla de registros
+   📌 Tabla de registros con imágenes
 ========================== */
 const tablaRegistros = qid("tablaRegistros");
 const btnLastStatus  = qid("btnLastStatus");
 const btnLast5       = qid("btnLast5");
 
+const ICONS = {
+  Parpadeo: { abierto:"img/ojosabiertos.jpg", cerrado:"img/ojoscerrados.jpg" },
+  Boca: { abierta:"img/bocaabierta.jpg", cerrada:"img/bocacerrada.jpg" },
+  Ceja: { levantada:"img/cejaslevantadas.jpg", neutra:"img/cejasneutras.jpg" }
+};
+
 function renderTabla(data){
-  if(!data || data.length === 0){
-    tablaRegistros.innerHTML = `<tr><td colspan="3" style="text-align:center; color:var(--muted)">Sin datos</td></tr>`;
+  if(!data || data.length===0){
+    tablaRegistros.innerHTML=`<tr><td colspan="4" style="text-align:center; color:var(--muted)">Sin datos</td></tr>`;
     return;
   }
-  tablaRegistros.innerHTML = data.map(r => {
+  tablaRegistros.innerHTML=data.map(r=>{
     if(r.estado){
-      return `<tr><td>${r.tipo}</td><td>${r.estado}</td><td>${r.fecha_hora}</td></tr>`;
+      let icon="—";
+      if(ICONS[r.tipo] && ICONS[r.tipo][r.estado.toLowerCase()]){
+        icon=`<img src="${ICONS[r.tipo][r.estado.toLowerCase()]}" alt="${r.estado}" style="width:40px; height:40px; object-fit:contain;">`;
+      }
+      return `<tr><td>${r.tipo}</td><td>${r.estado}</td><td>${icon}</td><td>${r.fecha_hora}</td></tr>`;
     }else{
-      return `<tr><td colspan="3" style="text-align:center; font-weight:bold; color:var(--accent)">${r.tipo}</td></tr>`;
+      return `<tr><td colspan="4" style="text-align:center; font-weight:bold; color:var(--accent)">${r.tipo}</td></tr>`;
     }
   }).join("");
 }
 
 btnLastStatus.addEventListener("click", async ()=>{
-  try{
-    const r = await fetch(API_URLS.ultimo);
-    const data = await r.json();
-    renderTabla(data);
-  }catch(err){
-    console.error("❌ Error obteniendo último estado:", err);
-  }
+  try{ const r=await fetch(API_URLS.ultimo); const data=await r.json(); renderTabla(data); }
+  catch(err){ console.error("❌ Error obteniendo último estado:",err); }
 });
 
 btnLast5.addEventListener("click", async ()=>{
   try{
-    const [rParp, rCej, rBoc] = await Promise.all([
-      fetch(API_URLS.ultimos5.parpadeos),
-      fetch(API_URLS.ultimos5.cejas),
-      fetch(API_URLS.ultimos5.bocas)
+    const [rParp,rCej,rBoc]=await Promise.all([
+      fetch(API_URLS.ultimos5.parpadeos), fetch(API_URLS.ultimos5.cejas), fetch(API_URLS.ultimos5.bocas)
     ]);
-    let parp = await rParp.json();
-    let cej  = await rCej.json();
-    let boc  = await rBoc.json();
-
-    parp = parp.map(r => ({...r, tipo:"Parpadeo"}));
-    cej  = cej.map(r => ({...r, tipo:"Ceja"}));
-    boc  = boc.map(r => ({...r, tipo:"Boca"}));
-
-    let data = [];
-    if(parp.length > 0){
-      data.push({tipo:"--- Últimos 5 Parpadeos ---"});
-      data = data.concat(parp);
-    }
-    if(cej.length > 0){
-      data.push({tipo:"--- Últimos 5 Cejas ---"});
-      data = data.concat(cej);
-    }
-    if(boc.length > 0){
-      data.push({tipo:"--- Últimos 5 Bocas ---"});
-      data = data.concat(boc);
-    }
-
+    let parp=await rParp.json(), cej=await rCej.json(), boc=await rBoc.json();
+    parp=parp.map(r=>({...r,tipo:"Parpadeo"}));
+    cej=cej.map(r=>({...r,tipo:"Ceja"}));
+    boc=boc.map(r=>({...r,tipo:"Boca"}));
+    let data=[];
+    if(parp.length>0){ data.push({tipo:"--- Últimos 5 Parpadeos ---"}); data=data.concat(parp); }
+    if(cej.length>0){ data.push({tipo:"--- Últimos 5 Cejas ---"}); data=data.concat(cej); }
+    if(boc.length>0){ data.push({tipo:"--- Últimos 5 Bocas ---"}); data=data.concat(boc); }
     renderTabla(data);
-  }catch(err){
-    console.error("❌ Error obteniendo últimos 5:", err);
-  }
+  }catch(err){ console.error("❌ Error obteniendo últimos 5:",err); }
 });
