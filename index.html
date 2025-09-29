@@ -80,6 +80,29 @@
       </div>
     </aside>
   </main>
+  
+   <!-- Panel inferior: Tabla de registros -->
+    <section class="panel panel-bottom">
+      <div class="controls">
+        <button id="btnLastStatus" class="btn primary">Último estado</button>
+        <button id="btnLast5" class="btn">Últimos 5</button>
+      </div>
+
+      <div class="table-wrapper">
+        <table class="records-table">
+          <thead>
+            <tr>
+              <th>Gesto</th>
+              <th>Estado</th>
+              <th>Fecha/Hora</th>
+            </tr>
+          </thead>
+          <tbody id="tablaRegistros">
+            <tr><td colspan="3" style="text-align:center; color:var(--muted)">Sin datos</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
 
   <footer class="app-footer">
     <small>David Fidel Guzmán Sánchez 21200255</small>
