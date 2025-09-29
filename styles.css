@@ -113,6 +113,37 @@ video, canvas{
   text-align:center; padding: 14px; color: var(--muted);
 }
 
+.panel-bottom{
+  margin-top: 16px;
+}
+
+.table-wrapper{
+  margin-top: 12px;
+  overflow-x: auto;
+}
+
+.records-table{
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 14px;
+}
+
+.records-table th, .records-table td{
+  padding: 10px;
+  border-bottom: 1px solid rgba(255,255,255,0.08);
+  text-align: left;
+}
+
+.records-table th{
+  background: #121826;
+  color: var(--muted);
+  font-weight: 600;
+}
+
+.records-table tr:hover{
+  background: rgba(255,255,255,0.04);
+}
+
 /* Responsive */
 @media (max-width: 1024px){
   .app-main{ grid-template-columns: 1fr; }
